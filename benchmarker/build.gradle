@@ -1,0 +1,37 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // https://mvnrepository.com/artifact/org.apache.kafka/kafka-clients
+    implementation 'org.apache.kafka:kafka-clients:3.5.0'
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
+    implementation 'org.slf4j:slf4j-api:1.7.32'
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-simple
+    implementation 'org.slf4j:slf4j-simple:1.7.32'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+
+    // This dependency is used by the application.
+    implementation 'com.google.guava:guava:31.1-jre'
+
+    // randomizer lib
+    implementation 'com.carrotsearch.randomizedtesting:randomizedtesting-runner:2.7.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+application {
+    // Define the main class for the application.
+    mainClass = 'net.benchmarker.ThroughputRecorder'
+}
