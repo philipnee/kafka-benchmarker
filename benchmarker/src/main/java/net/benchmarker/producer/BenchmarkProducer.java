@@ -25,6 +25,7 @@ public class BenchmarkProducer implements AutoCloseable {
         try {
             // send the record and then call get, which blocks waiting for the ack from the broker
             RecordMetadata metadata = producer.send(new ProducerRecord<>(topic, key, value)).get();
+            log.info("Record sent to topic {} partition {} with offset {}", metadata.topic(), metadata.partition(), metadata.offset());
             return metadata;
         } catch (AuthorizationException | UnsupportedVersionException | ProducerFencedException
                  | FencedInstanceIdException | OutOfOrderSequenceException | SerializationException e) {

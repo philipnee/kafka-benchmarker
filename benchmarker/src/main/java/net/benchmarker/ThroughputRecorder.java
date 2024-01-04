@@ -2,10 +2,12 @@ package net.benchmarker;
 
 import net.benchmarker.producer.BenchmarkProducer;
 import net.benchmarker.utils.ArgumentParser;
+import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
@@ -13,9 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.LocalDate;
-import java.util.Collections;
-import java.util.Properties;
-import java.util.UUID;
+import java.util.*;
 
 public class ThroughputRecorder {
     private static Logger log = LoggerFactory.getLogger(ThroughputRecorder.class);
@@ -29,6 +29,7 @@ public class ThroughputRecorder {
 
         ArgumentParser parser = new ArgumentParser(args);
 
+        final String groupId = "group";
         final String bootstrapServers = parser.getArgument("bootstrap");
         int totalSizeMB = Integer.parseInt(parser.getArgument("totalSizeMB"));
         int messageSizeKB = Integer.parseInt(parser.getArgument("messageSizeKB"));
@@ -55,7 +56,7 @@ public class ThroughputRecorder {
         // Kafka consumer properties
         Properties consumerProps = new Properties();
         consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, "data-consumer-group");
+        consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 
@@ -67,9 +68,13 @@ public class ThroughputRecorder {
         long startTime = System.currentTimeMillis();
         int recordSize = 0;
         int numMessages = (totalSizeMB * 1024) / messageSizeKB;
+        KafkaOffsetChecker checker = new KafkaOffsetChecker();
+        checker.checkOffset(topicName);
+        log.info("Starting data consumer");
         while (true) {
             try {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
+                log.info("Received {} records", records.count());
                 recordSize += records.count();
                 if (recordSize >= numMessages)
                     break;
@@ -93,5 +98,25 @@ public class ThroughputRecorder {
         String today = LocalDate.now().toString();
         String uuid = UUID.randomUUID().toString().substring(0, 4); // Use a portion of UUID
         return "topic-" + today + "-" + uuid;
+    }
+
+    public static class KafkaOffsetChecker {
+        public void checkOffset(final String topic) {
+            Properties props = new Properties();
+            props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092"); // Set your Kafka broker(s)
+
+            try (AdminClient admin = AdminClient.create(props)) {
+                // Check offset for a consumer group
+                Map<TopicPartition, OffsetSpec> tpOffset = new HashMap<>();
+                tpOffset.put(new TopicPartition(topic, 0), OffsetSpec.latest());
+                log.info("Checking offset for topic {}", tpOffset);
+                ListOffsetsResult consumerOffsets = admin.listOffsets(tpOffset);
+                consumerOffsets.all().get().forEach((tp, offsetAndMetadata) ->
+                        System.out.println("Topic: " + tp.topic() + ", Partition: " + tp.partition() + ", Offset: " + offsetAndMetadata.offset())
+                );
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 }
