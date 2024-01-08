@@ -1,0 +1,9 @@
+bootstrapServers: localhost:9092
+totalMessageSizeMB: 100
+messageSizeKB:
+  - 1
+  - 10
+  - 100
+
+implementations:
+  - org.apache.kafka.clients.consumer.KafkaConsumer

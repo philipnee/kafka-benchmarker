@@ -2,67 +2,59 @@ package net.benchmarker;
 
 import net.benchmarker.producer.BenchmarkProducer;
 import net.benchmarker.utils.ArgumentParser;
+import net.benchmarker.utils.BenchmarkerConfig;
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.*;
 
 public class ThroughputRecorder {
     private static Logger log = LoggerFactory.getLogger(ThroughputRecorder.class);
+    private static BenchmarkerConfig config = new BenchmarkerConfig();
 
     public static void main(String[] args) {
         // Parsing command-line arguments for configuration
-        if (args.length < 2) {
-            System.out.println("Usage: DataProducerConsumer <bootstrap_servers> <total_size_MB> <message_size_KB> [<topic_name>]");
+        if (args.length == 0) {
+            System.out.println("Usage: DataProducerConsumer <bootstrap_servers> <config_file_path>");
             return;
         }
 
         ArgumentParser parser = new ArgumentParser(args);
 
         final String groupId = "group";
-        final String bootstrapServers = parser.getArgument("bootstrap");
-        int totalSizeMB = Integer.parseInt(parser.getArgument("totalSizeMB"));
-        int messageSizeKB = Integer.parseInt(parser.getArgument("messageSizeKB"));
-        String topicName = parser.getArgument("topic");
-        if (topicName == null) {
-            topicName = generateRandomTopicName();
-            log.info("Topic name: {}", topicName);
-        }
-        log.info("Using topic name {}", topicName);
-        log.info("Using bootstrap servers {}", bootstrapServers);
-        log.info("Using total size {} MB", totalSizeMB);
-        log.info("Using message size {} KB", messageSizeKB);
-
+        final String configFilePath = parser.getArgument("config");
+        config.loadConfig(configFilePath);
+        log.info("Using config {}", config.toJson());
+        int totalSizeMB = config.totalMessageSizeMB();
+        // currently we only use one
+        int messageSizeKB = config.messageSizeKB()[0];
+        String topicName = config.topic();
         // Kafka producer properties
-        Properties producerProps = new Properties();
-        producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        Properties producerConfig = BenchmarkerConfig.producerConfig(config);
 
         log.info("Starting data producer");
-        BenchmarkProducer producer = new BenchmarkProducer(producerProps);
+        BenchmarkProducer producer = new BenchmarkProducer(producerConfig);
         producer.produceData(totalSizeMB, messageSizeKB, topicName);
 
-        // Kafka consumer properties
-        Properties consumerProps = new Properties();
-        consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
-        consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-        consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-
         // Kafka consumer instance
-        KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProps);
+        Properties consumerProps = BenchmarkerConfig.consumerConfig(config);
+        consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        String consumerClass = config.implementations()[0];
+        log.info("Loading Kafka Consumer class: {}", consumerClass);
+        Consumer<String, String> consumer = createConfiguredKafkaConsumer(consumerClass, consumerProps);
         //consumer.subscribe(Collections.singletonList(topicName));
         consumer.assign(Collections.singletonList(new TopicPartition(topicName, 0)));
         Set<TopicPartition> partitions = consumer.assignment();
@@ -101,12 +93,13 @@ public class ThroughputRecorder {
         consumer.close();
     }
 
-    // Method to generate a random topic name
-    private static String generateRandomTopicName() {
-        String today = LocalDate.now().toString();
-        String uuid = UUID.randomUUID().toString().substring(0, 4); // Use a portion of UUID
-        return "topic-" + today + "-" + uuid;
+    private static Consumer<String, String> createConfiguredKafkaConsumer(final String classPath,
+                                                                               final Properties consumerProps) {
+        return (Consumer<String, String>) ConsumerCreater.createCustomKafkaConsumer(classPath, consumerProps);
     }
+
+    // Method to generate a random topic name
+
 
     public static class KafkaOffsetChecker {
         public void checkOffset(final String topic, final TopicPartition tp) {
@@ -126,5 +119,19 @@ public class ThroughputRecorder {
                 e.printStackTrace();
             }
         }
+    }
+
+    public static class ConsumerCreater {
+        public static Consumer<?, ?> createCustomKafkaConsumer(final String classPath,
+                                                               final Properties kafkaConsumerProps) {
+            try {
+                Class<? extends Consumer<?, ?>> kafkaConsumerClass = (Class<? extends Consumer<?, ?>>) Class.forName(classPath);
+                Constructor<? extends Consumer<?, ?>> constructor = kafkaConsumerClass.getConstructor(Properties.class);
+                return constructor.newInstance(kafkaConsumerProps);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
     }
 }
