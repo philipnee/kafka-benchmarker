@@ -1,6 +1,7 @@
 package net.benchmarker.producer;
 
 import com.carrotsearch.randomizedtesting.Xoroshiro128PlusRandom;
+import org.apache.commons.lang3.RandomStringUtils;
 
 import java.util.Arrays;
 
@@ -13,5 +14,9 @@ public class DataGenerator {
         final char[] chars = new char[size];
         Arrays.fill(chars, alphabet[keyGeneratorRandom.nextInt(alphabet.length)]);
         return new String(chars);
+    }
+
+    static String generateString(final int size) {
+        return RandomStringUtils.random(size, true, true);
     }
 }

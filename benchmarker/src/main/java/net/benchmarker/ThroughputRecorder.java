@@ -7,6 +7,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -62,22 +63,29 @@ public class ThroughputRecorder {
 
         // Kafka consumer instance
         KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProps);
-        consumer.subscribe(Collections.singletonList(topicName));
+        //consumer.subscribe(Collections.singletonList(topicName));
+        consumer.assign(Collections.singletonList(new TopicPartition(topicName, 0)));
+        Set<TopicPartition> partitions = consumer.assignment();
+        consumer.seekToBeginning(partitions);
 
         // Start timing for consumer to finish all data
         long startTime = System.currentTimeMillis();
         int recordSize = 0;
         int numMessages = (totalSizeMB * 1024) / messageSizeKB;
-        KafkaOffsetChecker checker = new KafkaOffsetChecker();
-        checker.checkOffset(topicName);
-        log.info("Starting data consumer");
-        while (true) {
+        int tenthOfMessages = numMessages / 10;
+        // KafkaOffsetChecker checker = new KafkaOffsetChecker();
+        // checker.checkOffset(topicName, partitions.stream().findAny().get());
+        log.info("Starting data consumer processing {}MB {} messages", totalSizeMB, numMessages);
+        while (recordSize < numMessages) {
             try {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
-                log.info("Received {} records", records.count());
+                if (recordSize % tenthOfMessages == 0) {
+                    log.info("current position: {}", consumer.position(partitions.stream().findAny().get()));
+                    log.info("Received {} records", records.count());
+                }
+                if (records.count() == 0)
+                    continue;
                 recordSize += records.count();
-                if (recordSize >= numMessages)
-                    break;
             } catch (Exception e) {
                 log.error("Error consuming records: ", e);
                 e.printStackTrace();
@@ -101,18 +109,18 @@ public class ThroughputRecorder {
     }
 
     public static class KafkaOffsetChecker {
-        public void checkOffset(final String topic) {
+        public void checkOffset(final String topic, final TopicPartition tp) {
             Properties props = new Properties();
             props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092"); // Set your Kafka broker(s)
 
             try (AdminClient admin = AdminClient.create(props)) {
                 // Check offset for a consumer group
                 Map<TopicPartition, OffsetSpec> tpOffset = new HashMap<>();
-                tpOffset.put(new TopicPartition(topic, 0), OffsetSpec.latest());
+                tpOffset.put(tp, OffsetSpec.latest());
                 log.info("Checking offset for topic {}", tpOffset);
                 ListOffsetsResult consumerOffsets = admin.listOffsets(tpOffset);
-                consumerOffsets.all().get().forEach((tp, offsetAndMetadata) ->
-                        System.out.println("Topic: " + tp.topic() + ", Partition: " + tp.partition() + ", Offset: " + offsetAndMetadata.offset())
+                consumerOffsets.all().get().forEach((t, offsetAndMetadata) ->
+                        System.out.println("Topic: " + t.topic() + ", Partition: " + t.partition() + ", Offset: " + offsetAndMetadata.offset())
                 );
             } catch (Exception e) {
                 e.printStackTrace();
