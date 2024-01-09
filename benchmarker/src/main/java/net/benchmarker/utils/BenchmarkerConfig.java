@@ -32,6 +32,8 @@ public class BenchmarkerConfig {
     private String bootstrapServers;
     private String[] consumerImplementations;
     private int numPartitions = 1;
+    private boolean isProduce = false;
+    private boolean isConsume = false;
 
     public void loadConfig(String configFile) {
         File file = new File(configFile); //here you make a filehandler - not a filesystem file.
@@ -54,6 +56,8 @@ public class BenchmarkerConfig {
             numPartitions = data.containsKey(NUM_PARTITIONS) ?
                     (int) data.get(NUM_PARTITIONS) : numPartitions;
             consumerImplementations = parseStringArray(data.get(CONSUMER_IMPLEMENTATIONS));
+            isProduce = data.containsKey("produce") ? (boolean) data.get("produce") : false;
+            isConsume = data.containsKey("consume") ? (boolean) data.get("consume") : false;
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -115,6 +119,14 @@ public class BenchmarkerConfig {
         return consumerImplementations;
     }
 
+    public boolean produceTask() {
+        return isProduce;
+    }
+
+    public boolean consumeTask() {
+        return isConsume;
+    }
+
     @Override
     public String toString() {
         return "BenchmarkerConfig{" +
@@ -123,6 +135,9 @@ public class BenchmarkerConfig {
                 ", topic='" + topic + '\'' +
                 ", bootstrapServers='" + bootstrapServers + '\'' +
                 ", numPartitions=" + numPartitions +
+                ", consumerImplementations=" + Arrays.toString(consumerImplementations) +
+                ", isProduce=" + isProduce +
+                ", isConsume=" + isConsume +
                 '}';
     }
 
@@ -130,9 +145,12 @@ public class BenchmarkerConfig {
         return "{" +
                 "\"totalMessageSizeMB\":" + totalMessageSizeMB +
                 ", \"messageSizeKB\":" + Arrays.toString(messageSizeKB) +
-                ", \"topic\":\"" + topic + "\"" +
-                ", \"bootstrapServers\":\"" + bootstrapServers + "\"" +
+                ", \"topic\":\"" + topic + '\"' +
+                ", \"bootstrapServers\":\"" + bootstrapServers + '\"' +
                 ", \"numPartitions\":" + numPartitions +
+                ", \"implementations\":" + Arrays.stream(consumerImplementations).map(s -> "\"" + s + "\"").collect(Collectors.joining(",")) +
+                ", \"produce\":" + isProduce +
+                ", \"consume\":" + isConsume +
                 '}';
     }
 

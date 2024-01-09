@@ -15,6 +15,16 @@ public class ArgumentParser {
         String key = null;
 
         for (String arg : args) {
+            if (arg.equals("-produce")) {
+                arguments.put("produce", "true");
+                continue;
+            }
+
+            if (arg.equals("-consume")) {
+                arguments.put("consume", "true");
+                continue;
+            }
+
             if (arg.startsWith("-")) {
                 key = arg.substring(1);
             } else {
